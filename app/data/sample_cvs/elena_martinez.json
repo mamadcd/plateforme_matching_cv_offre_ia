@@ -1,0 +1,27 @@
+{
+  "id": "cv-005",
+  "full_name": "Elena Martinez",
+  "summary": "Développeuse backend senior avec 8 ans d'expérience en Java, Spring et systèmes distribués, basée à Strasbourg. Mobile à Strasbourg, Nancy et Luxembourg, avec préférence pour un mode hybride.",
+  "skills": [
+    "Java",
+    "Spring Boot",
+    "Kotlin",
+    "Microservices",
+    "REST API",
+    "Kafka",
+    "PostgreSQL",
+    "Redis",
+    "AWS",
+    "CI/CD",
+    "Kubernetes",
+    "TDD",
+    "Architecture logicielle"
+  ],
+  "experience": [
+    "11/2020 - aujourd'hui - Senior Backend Engineer chez FinCore, Strasbourg : conception de microservices Java, traitement d'événements Kafka et sécurisation d'API REST.",
+    "04/2018 - 10/2020 - Software Engineer chez InsurTech Europe, Luxembourg : développement de services Spring Boot, intégration PostgreSQL et automatisation des déploiements AWS.",
+    "09/2016 - 03/2018 - Java Developer chez Alsace Systems, Strasbourg : maintenance évolutive, tests automatisés et migration progressive vers une architecture microservices.",
+    "Mobilité : réside à Strasbourg, mobile à Nancy et au Luxembourg ; mode hybride privilégié ; télétravail jusqu'à trois jours par semaine accepté ; déménagement possible à moyen terme."
+  ],
+  "raw_text": "Elena Martinez, Strasbourg. Développeuse backend senior avec 8 ans d'expérience. Expériences : 11/2020-aujourd'hui Senior Backend Engineer chez FinCore à Strasbourg ; 04/2018-10/2020 Software Engineer chez InsurTech Europe au Luxembourg ; 09/2016-03/2018 Java Developer chez Alsace Systems à Strasbourg. Compétences : Java, Spring Boot, Kotlin, microservices, REST API, Kafka, PostgreSQL, Redis, AWS, CI/CD, Kubernetes, TDD, architecture logicielle. Mobilité Strasbourg, Nancy et Luxembourg ; hybride privilégié, télétravail trois jours par semaine, déménagement possible à moyen terme."
+}

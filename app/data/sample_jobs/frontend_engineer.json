@@ -1,0 +1,9 @@
+{
+  "id": "job-003",
+  "title": "Frontend Engineer",
+  "company": "PixelLab",
+  "location": "Nantes",
+  "description": "Nous cherchons un frontend engineer pour concevoir des interfaces complexes avec React, TypeScript et CSS. Le candidat doit aussi travailler avec les designers et optimiser l'expérience utilisateur.",
+  "required_skills": ["JavaScript", "React", "TypeScript", "CSS", "UX Design"],
+  "keywords": ["react", "typescript", "css", "frontend", "ux"]
+}

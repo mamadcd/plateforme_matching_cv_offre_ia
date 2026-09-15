@@ -1,0 +1,12 @@
+{
+  "id": "cv-002",
+  "full_name": "Benoît Rousseau",
+  "summary": "Développeur frontend senior spécialisé en interfaces utilisateur et JavaScript modern.",
+  "skills": ["JavaScript", "TypeScript", "React", "HTML", "CSS", "UX Design", "Testing", "Node.js"],
+  "experience": [
+    "Conception de dashboards web pour des outils SaaS",
+    "Refonte de l'UX d'applications B2B",
+    "Optimisation de performance front-end"
+  ],
+  "raw_text": "Frontend engineer, JavaScript, TypeScript, React, CSS, HTML, UI engineering, UX, testing, accessibility"
+}

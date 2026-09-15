@@ -1,0 +1,9 @@
+{
+  "id": "job-001",
+  "title": "Data Scientist",
+  "company": "Acme Analytics",
+  "location": "Paris",
+  "description": "Nous recherchons un data scientist pour développer des modèles de prédiction, des analyses et des systèmes de recommandation. Le candidat devra maîtriser Python, SQL, machine learning et NLP.",
+  "required_skills": ["Python", "Machine Learning", "SQL", "NLP", "Data Analysis"],
+  "keywords": ["python", "machine learning", "sql", "nlp", "analytics"]
+}

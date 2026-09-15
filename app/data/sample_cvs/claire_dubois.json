@@ -1,0 +1,26 @@
+{
+  "id": "cv-003",
+  "full_name": "Claire Dubois",
+  "summary": "Ingénieure data et machine learning avec 4 ans d'expérience, basée à Toulouse. Mobile à Bordeaux et Paris, ouverte au télétravail hybride et aux déplacements ponctuels.",
+  "skills": [
+    "Python",
+    "Machine Learning",
+    "Deep Learning",
+    "TensorFlow",
+    "PyTorch",
+    "SQL",
+    "MLOps",
+    "Docker",
+    "Kubernetes",
+    "AWS",
+    "NLP",
+    "Git"
+  ],
+  "experience": [
+    "09/2022 - aujourd'hui - Machine Learning Engineer chez AeroVision, Toulouse : développement de modèles de vision par ordinateur et mise en production d'API Python.",
+    "01/2021 - 08/2022 - Data Scientist chez MedData, Montpellier : préparation de données médicales, classification supervisée et suivi des performances des modèles.",
+    "06/2020 - 12/2020 - Stage Data Engineer chez CloudFactory, Toulouse : création de pipelines ETL avec Python, SQL et Docker.",
+    "Mobilité : réside à Toulouse, mobile à Bordeaux, Paris et Montpellier ; télétravail hybride accepté ; déplacements professionnels ponctuels acceptés."
+  ],
+  "raw_text": "Claire Dubois, Toulouse. Ingénieure data et machine learning, 4 ans d'expérience. Expériences : 09/2022-aujourd'hui Machine Learning Engineer chez AeroVision à Toulouse ; 01/2021-08/2022 Data Scientist chez MedData à Montpellier ; 06/2020-12/2020 stage Data Engineer chez CloudFactory à Toulouse. Compétences : Python, machine learning, deep learning, TensorFlow, PyTorch, SQL, MLOps, Docker, Kubernetes, AWS, NLP, Git. Mobilité Toulouse, Bordeaux, Paris et Montpellier ; télétravail hybride et déplacements ponctuels possibles."
+}

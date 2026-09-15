@@ -1,0 +1,9 @@
+{
+  "id": "job-002",
+  "title": "Data Analyst",
+  "company": "Nova Metrics",
+  "location": "Lyon",
+  "description": "Poste orienté business intelligence avec forte utilisation de SQL, analyse de données et visualisation de KPI. Le profil doit comprendre les enjeux marketing et de product analytics.Le poste est basé sur paris, mais le télétravail est possible.",
+  "required_skills": ["SQL", "Data Analysis", "Python", "Tableau", "Business Intelligence"],
+  "keywords": ["sql", "data analysis", "business intelligence", "python"]
+}

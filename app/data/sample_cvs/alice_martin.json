@@ -1,0 +1,21 @@
+{
+  "id": "cv-001",
+  "full_name": "Alice Martin",
+  "summary": "Data scientist expérimentée avec 5 ans d'expérience en machine learning, analytics et NLP.",
+  "skills": [
+    "Python",
+    "Machine Learning",
+    "SQL",
+    "NLP",
+    "Pandas",
+    "Scikit-learn",
+    "Data Analysis",
+    "A/B Testing"
+  ],
+  "experience": [
+    "Développement de systèmes de recommandation en Python",
+    "Analyse de données marketing et optimisation de conversion",
+    "Pilotage d'expérimentations A/B pour des produits ML"
+  ],
+  "raw_text": "Data scientist, Python, machine learning, SQL, NLP, pandas, scikit-learn, analytics, experimentation, recommandation systems"
+}
