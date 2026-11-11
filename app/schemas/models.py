@@ -30,7 +30,7 @@ class MatchAnalysis(BaseModel):
     matched_skills: List[str] = Field(default_factory=list)
 
 
-class MatchResult(BaseModel):
+class RetrievedJobMatch(BaseModel):
     job: JobPosting
     score: float
     matched_skills: List[str] = Field(default_factory=list)
@@ -44,7 +44,7 @@ class Job(BaseModel):
     required_skills: List[str] = Field(default_factory=list)
 
 
-class MatchResultLegacy(BaseModel):
+class JobForCVMatchResult(BaseModel):
     job_id: str
     job_title: str
     score: float = Field(..., ge=0, le=100, description="Score de matching entre 0 et 100")
@@ -53,13 +53,13 @@ class MatchResultLegacy(BaseModel):
     gaps: List[str] = Field(default_factory=list)
 
 
-class MatchingResponse(BaseModel):
+class CVToJobsMatchResponse(BaseModel):
     cv_summary: str
-    matches: List[MatchResultLegacy]
+    matches: List[JobForCVMatchResult]
     message: str = "Matching terminé"
 
 
-class ReverseMatchResult(BaseModel):
+class CVForJobMatchResult(BaseModel):
     cv_id: str
     cv_name: str
     score: float = Field(..., ge=0, le=100)
@@ -69,7 +69,7 @@ class ReverseMatchResult(BaseModel):
     matched_skills: List[str] = Field(default_factory=list)
 
 
-class JobMatchingResponse(BaseModel):
+class JobToCVsMatchResponse(BaseModel):
     job_summary: str
-    matches: List[ReverseMatchResult]
+    matches: List[CVForJobMatchResult]
     message: str = "Matching inverse terminé"

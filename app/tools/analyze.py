@@ -13,7 +13,7 @@ from app.schemas.models import CandidateCV, JobPosting, MatchAnalysis
 logger = logging.getLogger(__name__)
 
 
-def generate_match_analysis(cv: CandidateCV, job: JobPosting) -> MatchAnalysis:
+def analyze_cv_job_match(cv: CandidateCV, job: JobPosting) -> MatchAnalysis:
     cv_skills = {skill.lower() for skill in cv.skills}
     required_skills = {skill.lower() for skill in job.required_skills}
     matched = sorted(cv_skills & required_skills)
@@ -46,7 +46,7 @@ def generate_match_analysis(cv: CandidateCV, job: JobPosting) -> MatchAnalysis:
     )
 
 
-def generate_llm_match_analyses(cv: CandidateCV, jobs: list[JobPosting]) -> list[MatchAnalysis]:
+def analyze_jobs_for_cv(cv: CandidateCV, jobs: list[JobPosting]) -> list[MatchAnalysis]:
     """Use the configured LLM to analyze retrieved jobs, with a local fallback."""
     if not jobs:
         return []
@@ -81,16 +81,16 @@ l'expérience, la séniorité et la cohérence entre le parcours et l'offre.""")
             for item in payload["matches"]
         }
         return [
-            analyses_by_id.get(job.id, generate_match_analysis(cv, job))
+            analyses_by_id.get(job.id, analyze_cv_job_match(cv, job))
             for job in jobs
         ]
     except Exception as error:
         logger.warning("OpenAI match analysis failed; using local fallback: %s", error)
-        return [generate_match_analysis(cv, job) for job in jobs]
+        return [analyze_cv_job_match(cv, job) for job in jobs]
 
 
-def generate_llm_cv_match_analyses(job: JobPosting, cvs: list[CandidateCV]) -> list[MatchAnalysis]:
-    """Analyze the same match from the job's perspective for reverse search."""
+def analyze_cvs_for_job(job: JobPosting, cvs: list[CandidateCV]) -> list[MatchAnalysis]:
+    """Analyze candidate CVs against a job posting."""
     if not cvs:
         return []
 
@@ -127,19 +127,19 @@ la localisation et la mobilité par rapport aux contraintes de l'offre."""),
             for item in payload["matches"]
         }
         return [
-            analyses_by_id.get(cv.id, generate_match_analysis(cv, job))
+            analyses_by_id.get(cv.id, analyze_cv_job_match(cv, job))
             for cv in cvs
         ]
     except Exception as error:
         logger.warning("Reverse match analysis failed; using local analysis: %s", error)
-        return [generate_match_analysis(cv, job) for cv in cvs]
+        return [analyze_cv_job_match(cv, job) for cv in cvs]
 
 
 llm = get_llm()
 
 
 @tool
-def generate_match_analysis_tool(cv_text: str, jobs_text: str) -> str:
+def analyze_jobs_for_cv_tool(cv_text: str, jobs_text: str) -> str:
     """Analyse un CV par rapport à une liste d'offres récupérées."""
     prompt = ChatPromptTemplate.from_messages([
         ("system", """Tu es un expert en recrutement et en matching CV / offres d'emploi.

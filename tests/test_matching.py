@@ -1,6 +1,6 @@
 from app.schemas.models import CandidateCV, JobPosting
-from app.tools.analyze import generate_match_analysis
-from app.tools.retrieve import retrieve_relevant_jobs
+from app.tools.analyze import analyze_cv_job_match
+from app.tools.retrieve import retrieve_jobs_for_cv
 
 
 def build_cv():
@@ -37,22 +37,22 @@ def build_jobs():
     ]
 
 
-def test_retrieve_relevant_jobs_returns_best_match():
+def test_retrieve_jobs_for_cv_returns_best_match():
     cv = build_cv()
     jobs = build_jobs()
 
-    results = retrieve_relevant_jobs(cv, jobs, k=1)
+    results = retrieve_jobs_for_cv(cv, jobs, k=1)
 
     assert len(results) == 1
     assert results[0]["job"].id == "job-001"
     assert results[0]["score"] > 0.2
 
 
-def test_generate_match_analysis_produces_reasonable_score():
+def test_analyze_cv_job_match_produces_reasonable_score():
     cv = build_cv()
     job = build_jobs()[0]
 
-    analysis = generate_match_analysis(cv, job)
+    analysis = analyze_cv_job_match(cv, job)
 
     assert 0 <= analysis.score <= 100
     assert analysis.summary

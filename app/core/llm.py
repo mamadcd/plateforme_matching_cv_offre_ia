@@ -52,11 +52,14 @@ def get_llm():
             max_tokens=2000,
         )
     if settings.LLM_PROVIDER == "ollama":
-        from langchain_ollama import ChatOllama
+        try:
+            from langchain_ollama import ChatOllama
+        except ImportError:
+            return LocalFallbackLLM()
 
         return ChatOllama(
             model=settings.OLLAMA_MODEL,
-            temperature=0.2,
+            temperature=0.1,
             format="json",
         )
 

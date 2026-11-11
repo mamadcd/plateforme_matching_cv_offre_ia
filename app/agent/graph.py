@@ -2,12 +2,12 @@ from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langchain_core.messages import HumanMessage, SystemMessage
 from app.agent.state import AgentState
-from app.tools.retrieve import retrieve_relevant_jobs
-from app.tools.analyze import generate_match_analysis
+from app.tools.retrieve import retrieve_jobs_for_cv
+from app.tools.analyze import analyze_cv_job_match
 from app.core.llm import get_llm
 
 
-tools = [retrieve_relevant_jobs, generate_match_analysis]
+tools = [retrieve_jobs_for_cv, analyze_cv_job_match]
 llm = get_llm().bind_tools(tools)
 tool_node = ToolNode(tools)
 

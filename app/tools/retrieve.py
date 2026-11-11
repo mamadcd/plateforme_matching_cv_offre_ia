@@ -72,7 +72,7 @@ def index_jobs(jobs: Iterable[JobPosting]) -> None:
     )
 
 
-def retrieve_relevant_jobs(cv: CandidateCV, jobs: Iterable[JobPosting], k: int = 3) -> List[dict]:
+def retrieve_jobs_for_cv(cv: CandidateCV, jobs: Iterable[JobPosting], k: int = 3) -> List[dict]:
     """Return the jobs closest to the CV in the BGE-M3 embedding space."""
     job_list = list(jobs)
     if not job_list:
@@ -110,7 +110,7 @@ def index_cvs(cvs: Iterable[CandidateCV]) -> None:
     )
 
 
-def retrieve_relevant_cvs(job: JobPosting, cvs: Iterable[CandidateCV], k: int = 3) -> List[dict]:
+def retrieve_cvs_for_job(job: JobPosting, cvs: Iterable[CandidateCV], k: int = 3) -> List[dict]:
     """Return the candidates closest to a job in the BGE-M3 embedding space."""
     cv_list = list(cvs)
     if not cv_list:
@@ -137,7 +137,7 @@ def retrieve_relevant_cvs(job: JobPosting, cvs: Iterable[CandidateCV], k: int = 
 
 
 @tool
-def retrieve_relevant_jobs_tool(cv_text: str, k: int = 5) -> str:
+def retrieve_jobs_for_cv_tool(cv_text: str, k: int = 5) -> str:
     """Récupère les offres d'emploi les plus pertinentes par rapport à un CV."""
     docs = vectorstore.similarity_search(cv_text, k=k)
     if not docs:
