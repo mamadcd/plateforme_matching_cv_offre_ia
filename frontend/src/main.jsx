@@ -8,6 +8,7 @@ import {
   Check,
   ChevronRight,
   CircleUserRound,
+  ExternalLink,
   FileText,
   LogOut,
   Search,
@@ -373,16 +374,25 @@ function CandidateDashboard() {
   const [profile, setProfile] = useState(null);
   const [applications, setApplications] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [evaluationConsent, setEvaluationConsent] = useState(null);
+  const [evaluationChoice, setEvaluationChoice] = useState(false);
+  const [consentBusy, setConsentBusy] = useState(false);
   const [error, setError] = useState("");
   async function refresh() {
-    const values = await Promise.all([
-      api("/candidate/profile").catch(() => null),
-      api("/candidate/applications").catch(() => []),
-      api("/candidate/notifications").catch(() => []),
+    const [savedProfile, savedApplications, savedNotifications, consent] = await Promise.all([
+      api("/candidate/profile").catch((requestError) => {
+        if (requestError.message === "Aucun CV enregistré") return null;
+        throw requestError;
+      }),
+      api("/candidate/applications"),
+      api("/candidate/notifications"),
+      api("/candidate/evaluation-consent"),
     ]);
-    setProfile(values[0]);
-    setApplications(values[1]);
-    setNotifications(values[2]);
+    setProfile(savedProfile);
+    setApplications(savedApplications);
+    setNotifications(savedNotifications);
+    setEvaluationConsent(consent);
+    setEvaluationChoice(consent.enabled);
   }
   useEffect(() => {
     refresh().catch((requestError) => setError(requestError.message));
@@ -396,6 +406,22 @@ function CandidateDashboard() {
       await refresh();
     } catch (requestError) {
       setError(requestError.message);
+    }
+  }
+  async function saveEvaluationConsent() {
+    setConsentBusy(true);
+    setError("");
+    try {
+      const consent = await api("/candidate/evaluation-consent", {
+        method: "PUT",
+        body: JSON.stringify({ enabled: evaluationChoice }),
+      });
+      setEvaluationConsent(consent);
+      setEvaluationChoice(consent.enabled);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setConsentBusy(false);
     }
   }
   return (
@@ -420,6 +446,46 @@ function CandidateDashboard() {
             Le partage du CV avec les recruteurs est désactivé par défaut. Vous pouvez l’activer
             avant l’enregistrement.
           </p>
+        </section>
+        <section className='workspace-section evaluation-consent-section'>
+          <SectionHeading
+            icon={<ShieldCheck size={18} />}
+            eyebrow='Participation facultative'
+            title='Améliorer le matching'
+          />
+          <p className='field-note'>
+            Autorisez séparément l’utilisation de votre profil pour évaluer la pertinence du
+            matching. Un administrateur pourra consulter le résumé, les compétences et l’expérience
+            sans votre nom ni le texte source du CV. Les annotations sont associées à un identifiant
+            pseudonymisé pour calculer les résultats; les rapports d’évaluation sont agrégés. Vous
+            pouvez retirer cet accord à tout moment, ce qui supprime vos annotations et les rapports
+            enregistrés.
+          </p>
+          <label className='consent-option'>
+            <input
+              type='checkbox'
+              checked={evaluationChoice}
+              onChange={(event) => setEvaluationChoice(event.target.checked)}
+            />
+            <span>
+              {evaluationConsent?.enabled
+                ? "Je participe à l’évaluation du matching sur mon profil."
+                : "J’accepte que mon profil serve à l’évaluation du matching."}
+            </span>
+          </label>
+          <button
+            className='button button-small'
+            type='button'
+            disabled={consentBusy || !profile || evaluationChoice === evaluationConsent?.enabled}
+            onClick={saveEvaluationConsent}
+          >
+            {consentBusy
+              ? "Enregistrement…"
+              : evaluationChoice
+                ? "Donner mon accord"
+                : "Retirer mon accord"}
+          </button>
+          {!profile && <p className='field-note'>Enregistrez d’abord votre CV pour participer.</p>}
         </section>
         <section className='workspace-section'>
           <SectionHeading
@@ -777,15 +843,76 @@ function NewJobForm({ onCreated }) {
 function AdminDashboard() {
   const [overview, setOverview] = useState(null);
   const [users, setUsers] = useState([]);
+  const [matchingQuality, setMatchingQuality] = useState(null);
+  const [matchingEvaluation, setMatchingEvaluation] = useState(null);
+  const [selectedCandidateRef, setSelectedCandidateRef] = useState("");
+  const [candidateEvaluation, setCandidateEvaluation] = useState(null);
+  const [evaluationBusy, setEvaluationBusy] = useState(false);
+  const [evaluationResult, setEvaluationResult] = useState(null);
+  const [evaluationSuccess, setEvaluationSuccess] = useState("");
   const [error, setError] = useState("");
   async function refresh() {
-    const values = await Promise.all([api("/admin/overview"), api("/admin/users")]);
+    const values = await Promise.all([
+      api("/admin/overview"),
+      api("/admin/users"),
+      api("/admin/matching-quality"),
+      api("/admin/matching-evaluation"),
+    ]);
     setOverview(values[0]);
     setUsers(values[1]);
+    setMatchingQuality(values[2]);
+    setMatchingEvaluation(values[3]);
+  }
+  async function selectEvaluationCandidate(candidateRef) {
+    setSelectedCandidateRef(candidateRef);
+    setCandidateEvaluation(null);
+    if (!candidateRef) return;
+    setCandidateEvaluation(await api(`/admin/matching-evaluation/${candidateRef}`));
+  }
+  async function saveEvaluationGrade(jobId, relevanceGrade) {
+    if (!selectedCandidateRef) return;
+    setError("");
+    setEvaluationSuccess("");
+    try {
+      await api("/admin/matching-evaluation/annotations", {
+        method: "PUT",
+        body: JSON.stringify({
+          candidate_ref: selectedCandidateRef,
+          job_id: jobId,
+          relevance_grade: Number(relevanceGrade),
+        }),
+      });
+      await Promise.all([selectEvaluationCandidate(selectedCandidateRef), refresh()]);
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }
+  async function runMatchingEvaluation() {
+    setEvaluationBusy(true);
+    setError("");
+    setEvaluationSuccess("");
+    try {
+      const report = await api("/admin/matching-evaluation/run", { method: "POST" });
+      setEvaluationResult(report);
+      setEvaluationSuccess("Évaluation terminée. Les métriques ci-dessous sont à jour.");
+      await refresh();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setEvaluationBusy(false);
+    }
   }
   useEffect(() => {
     refresh().catch((requestError) => setError(requestError.message));
   }, []);
+  const completeCandidateCount =
+    matchingEvaluation?.candidates?.filter((item) => item.complete).length ?? 0;
+  const latestRealEvaluation = evaluationResult || matchingEvaluation?.history?.[0] || null;
+  const previousEvaluations = (matchingEvaluation?.history || []).filter(
+    (report) => report.evaluated_at !== latestRealEvaluation?.evaluated_at,
+  );
+  const canRunEvaluation =
+    completeCandidateCount > 0 && (matchingEvaluation?.published_job_count ?? 0) > 0;
   async function updateUser(user, patch) {
     try {
       await api(`/admin/users/${user.id}`, { method: "PATCH", body: JSON.stringify(patch) });
@@ -811,6 +938,35 @@ function AdminDashboard() {
             label='Matchings visiteurs aujourd’hui'
             value={overview?.anonymous_matches_today}
           />
+        </div>
+      </section>
+      <section className='workspace-section prometheus-audit'>
+        <SectionHeading
+          icon={<Activity size={18} />}
+          eyebrow='Observabilité'
+          title='Audit Prometheus'
+        />
+        <p className='field-note'>
+          Vérifiez que l’API est bien collectée et consultez les métriques HTTP. La collecte est
+          configurée toutes les 15 secondes.
+        </p>
+        <div className='prometheus-audit-links'>
+          <a
+            className='button button-small'
+            href='/prometheus/targets'
+            target='_blank'
+            rel='noreferrer'
+          >
+            État de la cible API <ExternalLink size={15} />
+          </a>
+          <a
+            className='button button-small'
+            href='/prometheus/graph'
+            target='_blank'
+            rel='noreferrer'
+          >
+            Explorer les métriques <ExternalLink size={15} />
+          </a>
         </div>
       </section>
       <section className='workspace-section user-management'>
@@ -876,15 +1032,58 @@ function AdminDashboard() {
           <div>
             <strong>Fournisseur IA</strong>
             <small>
-              {overview?.ai_provider || "Chargement…"} · configuration au niveau serveur
+              {overview?.ai_provider || "Chargement…"} · configuration serveur; non utilisé pour le
+              score hybride
             </small>
           </div>
           <span className='state-label'>Lecture seule</span>
         </div>
         <div className='capability-row'>
           <div>
+            <strong>Pipeline de matching</strong>
+            <small>
+              Version {matchingQuality?.pipeline_version || "…"} · score déterministe; le LLM ne
+              choisit pas le score.
+              {matchingQuality?.score_weights &&
+                ` Poids : compétences ${Math.round(matchingQuality.score_weights.required_skills_coverage * 100)}%, sémantique ${Math.round(matchingQuality.score_weights.semantic_similarity * 100)}%, texte ${Math.round(matchingQuality.score_weights.profile_text_overlap * 100)}%.`}
+            </small>
+          </div>
+          <span className='state-label'>
+            {matchingQuality?.evaluation_dataset_configured ? "Benchmark prêt" : "Jeu absent"}
+          </span>
+        </div>
+        {matchingQuality?.latest_evaluation ? (
+          <>
+            <div className='evaluation-report-heading'>
+              <strong>Dernier benchmark</strong>
+              <span>
+                {matchingQuality.latest_evaluation.dataset_name ||
+                  matchingQuality.latest_evaluation.dataset_type}
+              </span>
+            </div>
+            <EvaluationMetricGrid metrics={matchingQuality.latest_evaluation.metrics} />
+            <p className='field-note'>
+              {matchingQuality.latest_evaluation.case_count} cas · évalué le{" "}
+              {new Date(matchingQuality.latest_evaluation.evaluated_at).toLocaleString("fr-FR")}.{" "}
+              {matchingQuality.latest_evaluation.warning}
+            </p>
+          </>
+        ) : (
+          <p className='field-note'>
+            Aucun rapport récent. Lancez <code>python -m app.evaluation</code> depuis la racine du
+            dépôt. Les métriques sont calculées sur les jugements du jeu d’évaluation configuré.
+          </p>
+        )}
+        {matchingQuality?.latest_evaluation?.dataset_type === "synthetic_demo" && (
+          <p className='field-note'>
+            Le rapport ci-dessus est une démonstration synthétique, distincte de l’évaluation réelle
+            ci-dessous.
+          </p>
+        )}
+        <div className='capability-row'>
+          <div>
             <strong>Suivi des biais</strong>
-            <small>Aucun historique de décisions ni jeu d’évaluation configuré.</small>
+            <small>Aucune analyse démographique ni suivi des biais n’est configuré.</small>
           </div>
           <span className='state-label unavailable'>Non disponible</span>
         </div>
@@ -896,12 +1095,177 @@ function AdminDashboard() {
           <span className='state-label unavailable'>Non disponible</span>
         </div>
       </section>
+      <section className='workspace-section real-evaluation-section'>
+        <SectionHeading
+          icon={<Activity size={18} />}
+          eyebrow='Données annotées avec consentement'
+          title='Évaluation réelle du matching'
+        />
+        <p className='field-note'>{matchingEvaluation?.notice}</p>
+        <div className='metric-row evaluation-metrics'>
+          <Metric
+            label='CV ayant consenti'
+            value={matchingEvaluation?.consented_candidate_count ?? 0}
+          />
+          <Metric label='Offres publiées' value={matchingEvaluation?.published_job_count ?? 0} />
+          <Metric label='CV complètement annotés' value={completeCandidateCount} />
+        </div>
+        <label className='evaluation-candidate-picker'>
+          Profil pseudonymisé à annoter
+          <select
+            value={selectedCandidateRef}
+            onChange={(event) =>
+              selectEvaluationCandidate(event.target.value).catch((requestError) =>
+                setError(requestError.message),
+              )
+            }
+          >
+            <option value=''>Choisir un profil consentant</option>
+            {(matchingEvaluation?.candidates || []).map((candidate) => (
+              <option key={candidate.candidate_ref} value={candidate.candidate_ref}>
+                Profil {candidate.candidate_ref.slice(0, 8)} · {candidate.annotated_job_count}/
+                {candidate.published_job_count} offres annotées
+              </option>
+            ))}
+          </select>
+        </label>
+        {candidateEvaluation && (
+          <div className='evaluation-annotation-workspace'>
+            <div className='evaluation-profile-card'>
+              <strong>Profil pseudonymisé</strong>
+              <p>{candidateEvaluation.profile.summary || "Aucun résumé"}</p>
+              <div className='skill-list'>
+                {candidateEvaluation.profile.skills.map((skill) => (
+                  <span className='skill-chip' key={skill}>
+                    {skill}
+                  </span>
+                ))}
+              </div>
+              {candidateEvaluation.profile.experience.length > 0 && (
+                <ul>
+                  {candidateEvaluation.profile.experience.map((item, index) => (
+                    <li key={`${index}-${item}`}>{item}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            {candidateEvaluation.jobs.length === 0 ? (
+              <p className='empty-state'>Aucune offre recruteur publiée à annoter.</p>
+            ) : (
+              <div className='evaluation-job-list'>
+                {candidateEvaluation.jobs.map((job) => (
+                  <article className='evaluation-job-card' key={job.id}>
+                    <div>
+                      <strong>{job.title}</strong>
+                      <small>
+                        {job.company} · {job.location || "Lieu non précisé"}
+                      </small>
+                      <p>{job.description}</p>
+                      <div className='skill-list'>
+                        {job.required_skills.map((skill) => (
+                          <span className='skill-chip' key={skill}>
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <label>
+                      Pertinence
+                      <select
+                        value={job.relevance_grade ?? ""}
+                        onChange={(event) => {
+                          if (event.target.value !== "")
+                            saveEvaluationGrade(job.id, event.target.value);
+                        }}
+                      >
+                        <option value=''>À annoter</option>
+                        {matchingEvaluation.annotation_scale.map((grade) => (
+                          <option key={grade.value} value={grade.value}>
+                            {grade.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        <p className='field-note'>
+          Un CV ne contribue aux métriques que si toutes les offres publiées ont un jugement à jour.
+          Les CV sans aucune offre jugée pertinente sont comptés mais exclus de Recall/MRR/nDCG.
+        </p>
+        {!canRunEvaluation && (
+          <p className='field-note'>
+            Pour lancer le calcul, publiez au moins une offre et annotez toutes les offres publiées
+            pour au moins un profil consentant.
+          </p>
+        )}
+        <button
+          className='button'
+          type='button'
+          disabled={evaluationBusy || !canRunEvaluation}
+          onClick={runMatchingEvaluation}
+        >
+          {evaluationBusy ? "Évaluation en cours…" : "Lancer l’évaluation réelle"}
+          <ArrowRight size={16} />
+        </button>
+        {evaluationSuccess && <Notice tone='success'>{evaluationSuccess}</Notice>}
+        {latestRealEvaluation && (
+          <section className='evaluation-results' aria-live='polite'>
+            <div className='evaluation-report-heading'>
+              <div>
+                <span className='eyebrow'>Résultat le plus récent</span>
+                <h3>Qualité du classement</h3>
+              </div>
+              <span>{new Date(latestRealEvaluation.evaluated_at).toLocaleString("fr-FR")}</span>
+            </div>
+            <div className='evaluation-result-volume'>
+              <span>{latestRealEvaluation.case_count} CV évalués</span>
+              <span>{latestRealEvaluation.job_count} offres</span>
+              {latestRealEvaluation.pair_count != null && (
+                <span>{latestRealEvaluation.pair_count} paires notées</span>
+              )}
+              {latestRealEvaluation.excluded_without_positive_labels > 0 && (
+                <span>
+                  {latestRealEvaluation.excluded_without_positive_labels} CV sans annotation
+                  positive exclus
+                </span>
+              )}
+            </div>
+            <EvaluationMetricGrid metrics={latestRealEvaluation.metrics} />
+            <p className='field-note'>{latestRealEvaluation.warning}</p>
+          </section>
+        )}
+        {previousEvaluations.length > 0 ? (
+          <div className='evaluation-history'>
+            <h3>Historique des évaluations réelles</h3>
+            {previousEvaluations.map((report) => (
+              <article className='evaluation-history-row' key={report.evaluated_at}>
+                <div>
+                  <strong>
+                    {report.case_count} CV évalués · {report.job_count} offres
+                  </strong>
+                  <small>{new Date(report.evaluated_at).toLocaleString("fr-FR")}</small>
+                </div>
+                <EvaluationMetricGrid metrics={report.metrics} compact />
+                <p className='field-note'>{report.warning}</p>
+              </article>
+            ))}
+          </div>
+        ) : !latestRealEvaluation ? (
+          <p className='field-note'>Aucune évaluation réelle n’a encore été lancée.</p>
+        ) : null}
+      </section>
     </div>
   );
 }
 
 function FileMatcher({ role, onSaved, onApply }) {
   const [file, setFile] = useState(null);
+  const [parsed, setParsed] = useState(null);
+  const [review, setReview] = useState(null);
   const [searchable, setSearchable] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -911,23 +1275,50 @@ function FileMatcher({ role, onSaved, onApply }) {
     if (!file) return;
     setBusy(true);
     setError("");
-    setResult(null);
     try {
-      const body = new FormData();
-      body.append("file", file);
-      const parsed = await api(`/ingest/${role === "recruiter" ? "job" : "cv"}`, {
-        method: "POST",
-        body,
-      });
+      if (!parsed) {
+        const body = new FormData();
+        body.append("file", file);
+        const extracted = await api(`/ingest/${role === "recruiter" ? "job" : "cv"}`, {
+          method: "POST",
+          body,
+        });
+        setParsed(extracted);
+        setReview({
+          full_name: extracted.full_name,
+          summary: extracted.summary,
+          skills: extracted.skills.join(", "),
+          experience: extracted.experience.join("\n"),
+        });
+        setResult(null);
+        return;
+      }
+      const reviewed = {
+        ...parsed,
+        full_name: review.full_name.trim(),
+        summary: review.summary.trim(),
+        skills: review.skills
+          .split(",")
+          .map((skill) => skill.trim())
+          .filter(Boolean),
+        experience: review.experience
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean),
+      };
+      const cvPayload = { ...reviewed };
+      delete cvPayload.extracted_text;
       if (role === "candidate") {
         await api("/candidate/profile", {
           method: "PUT",
-          body: JSON.stringify({ ...parsed, searchable }),
+          body: JSON.stringify({ ...cvPayload, searchable }),
         });
         setResult(await api("/candidate/recommendations", { method: "POST" }));
         onSaved?.();
       } else
-        setResult(await api("/match/anonymous", { method: "POST", body: JSON.stringify(parsed) }));
+        setResult(
+          await api("/match/anonymous", { method: "POST", body: JSON.stringify(cvPayload) }),
+        );
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -943,7 +1334,12 @@ function FileMatcher({ role, onSaved, onApply }) {
           <input
             type='file'
             accept='.pdf,.docx,.png,.jpg,.jpeg,.webp,.tiff,.tif,.bmp,.txt,.md,.csv'
-            onChange={(event) => setFile(event.target.files?.[0] || null)}
+            onChange={(event) => {
+              setFile(event.target.files?.[0] || null);
+              setParsed(null);
+              setReview(null);
+              setResult(null);
+            }}
           />
         </label>
         {role === "candidate" && (
@@ -960,13 +1356,67 @@ function FileMatcher({ role, onSaved, onApply }) {
         )}
         <button className='button' disabled={!file || busy}>
           {busy
-            ? "Analyse en cours…"
-            : role === "candidate"
-              ? "Enregistrer et voir les recommandations"
-              : "Analyser les offres publiques"}
+            ? parsed
+              ? "Matching en cours…"
+              : "Extraction en cours…"
+            : !parsed
+              ? "Extraire les informations"
+              : role === "candidate"
+                ? "Enregistrer et voir les recommandations"
+                : "Analyser les offres publiques"}
           <Sparkles size={16} />
         </button>
       </form>
+      {parsed && review && (
+        <section className='extraction-review' aria-label='Vérifier les informations extraites'>
+          <div className='extraction-quality'>
+            <strong>Complétude détectée : {parsed.extraction_quality?.completeness ?? 0}%</strong>
+            <span>Indicateur technique, pas une mesure de justesse.</span>
+          </div>
+          {parsed.extraction_quality?.warnings?.map((warning) => (
+            <Notice key={warning}>{warning}</Notice>
+          ))}
+          {role === "candidate" && parsed.extracted_text && (
+            <details className='extracted-transcription' open>
+              <summary>
+                Transcription extraite complète
+                <small>{parsed.extracted_text.length.toLocaleString("fr-FR")} caractères</small>
+              </summary>
+              <pre>{parsed.extracted_text}</pre>
+            </details>
+          )}
+          <label>
+            Nom
+            <input
+              value={review.full_name}
+              onChange={(event) => setReview({ ...review, full_name: event.target.value })}
+            />
+          </label>
+          <label>
+            Résumé
+            <textarea
+              rows={3}
+              value={review.summary}
+              onChange={(event) => setReview({ ...review, summary: event.target.value })}
+            />
+          </label>
+          <label>
+            Compétences détectées <small>Vérifiez les compétences séparées par des virgules.</small>
+            <input
+              value={review.skills}
+              onChange={(event) => setReview({ ...review, skills: event.target.value })}
+            />
+          </label>
+          <label>
+            Expériences <small>Une expérience par ligne.</small>
+            <textarea
+              rows={4}
+              value={review.experience}
+              onChange={(event) => setReview({ ...review, experience: event.target.value })}
+            />
+          </label>
+        </section>
+      )}
       {error && <Notice tone='error'>{error}</Notice>}
       {result && <ResultList result={result} candidate={role === "candidate"} onApply={onApply} />}
     </>
@@ -978,20 +1428,28 @@ function ResultList({ result, candidate, onApply }) {
     <div className='match-list'>
       <div className='match-list-heading'>
         <span className='eyebrow'>Recommandations</span>
-        <strong>{result.matches?.length || 0} résultats</strong>
+        <strong>
+          {result.matches?.length || 0} résultats · {result.score_version}
+        </strong>
       </div>
+      <p className='field-note'>
+        Score indicatif, non assimilable à une probabilité d’embauche. Les poids indisponibles sont
+        renormalisés.
+      </p>
       {(result.matches || []).map((match) => (
         <article className='match-result' key={match.job_id || match.cv_id}>
           <div className='match-result-main'>
             <h3>{match.job_title || match.cv_name}</h3>
             <p>{match.explanation}</p>
             <div className='tag-row'>
-              {(match.matched_skills || match.strengths || []).slice(0, 5).map((skill) => (
+              {(match.matched_skills || []).slice(0, 5).map((skill) => (
                 <span className='skill-tag' key={skill}>
                   {skill}
                 </span>
               ))}
             </div>
+            <MatchSignalsView signals={match.signals} weights={result.score_weights} />
+            <MatchSignalsView signals={candidate.signals} weights={candidate.score_weights} />
             {match.gaps?.length > 0 && (
               <p className='gap-line'>
                 <span>À renforcer</span> {match.gaps.slice(0, 2).join(" · ")}
@@ -1015,6 +1473,32 @@ function ResultList({ result, candidate, onApply }) {
   );
 }
 
+function MatchSignalsView({ signals, weights }) {
+  const labels = {
+    required_skills_coverage: "Compétences requises couvertes",
+    semantic_similarity: "Similarité sémantique",
+    profile_text_overlap: "Recouvrement texte du profil / offre",
+  };
+  const entries = Object.entries(signals || {}).filter(
+    ([, value]) => value !== null && value !== undefined,
+  );
+  if (!entries.length) return null;
+  return (
+    <div className='match-signals'>
+      {entries.map(([key, value]) => (
+        <div className='match-signal' key={key}>
+          <span>
+            {labels[key] || key}
+            {weights?.[key] !== undefined && ` · poids ${Math.round(weights[key] * 100)}%`}
+          </span>
+          <strong>{Math.round(value * 100)}%</strong>
+          <meter min='0' max='1' value={value} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SectionHeading({ icon, eyebrow, title, count }) {
   return (
     <div className='section-heading'>
@@ -1032,6 +1516,36 @@ function Metric({ label, value }) {
     <div className='metric'>
       <strong>{value ?? "—"}</strong>
       <span>{label}</span>
+    </div>
+  );
+}
+function EvaluationMetricGrid({ metrics, compact = false }) {
+  const labels = {
+    recall_at_1: "Recall@1",
+    recall_at_3: "Recall@3",
+    recall_at_5: "Recall@5",
+    mrr: "MRR",
+    ndcg_at_1: "nDCG@1",
+    ndcg_at_3: "nDCG@3",
+    ndcg_at_5: "nDCG@5",
+  };
+  if (!metrics) return null;
+  return (
+    <div className={`evaluation-result-metrics${compact ? " compact" : ""}`}>
+      {Object.entries(metrics).map(([name, value]) => (
+        <div className='evaluation-result-metric' key={name}>
+          <div>
+            <span>{labels[name] || name.replaceAll("_", " ")}</span>
+            <strong>{(value * 100).toFixed(1)}%</strong>
+          </div>
+          <meter
+            min='0'
+            max='1'
+            value={value}
+            aria-label={`${labels[name] || name}: ${(value * 100).toFixed(1)}%`}
+          />
+        </div>
+      ))}
     </div>
   );
 }

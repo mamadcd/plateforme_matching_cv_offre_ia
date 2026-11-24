@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta, timezone
+from threading import Lock
+from time import monotonic
 from typing import Callable
 
 import jwt
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from pwdlib import PasswordHash
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -18,6 +20,41 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 password_hash = PasswordHash.recommended()
 COOKIE_NAME = "matching_session"
 JWT_ALGORITHM = "HS256"
+LOGIN_MAX_ATTEMPTS = 5
+LOGIN_WINDOW_SECONDS = 15 * 60
+login_attempts: dict[tuple[str, str], list[float]] = {}
+login_attempts_lock = Lock()
+
+
+def _login_attempt_key(email: str, request: Request) -> tuple[str, str]:
+    client_ip = request.client.host if request.client else "unknown"
+    return email, client_ip
+
+
+def _check_login_attempt_limit(key: tuple[str, str]) -> None:
+    now = monotonic()
+    cutoff = now - LOGIN_WINDOW_SECONDS
+    with login_attempts_lock:
+        attempts = [attempt_at for attempt_at in login_attempts.get(key, []) if attempt_at >= cutoff]
+        if len(attempts) >= LOGIN_MAX_ATTEMPTS:
+            raise HTTPException(
+                status_code=429,
+                detail="Trop de tentatives de connexion. Réessayez dans quelques minutes.",
+            )
+
+
+def _record_failed_login(key: tuple[str, str]) -> None:
+    now = monotonic()
+    cutoff = now - LOGIN_WINDOW_SECONDS
+    with login_attempts_lock:
+        attempts = [attempt_at for attempt_at in login_attempts.get(key, []) if attempt_at >= cutoff]
+        attempts.append(now)
+        login_attempts[key] = attempts
+
+
+def _clear_failed_logins(key: tuple[str, str]) -> None:
+    with login_attempts_lock:
+        login_attempts.pop(key, None)
 
 
 def _configured_secret() -> str:
@@ -80,16 +117,22 @@ def register(
 def login(
     payload: LoginRequest,
     response: Response,
+    request: Request,
     session: Session = Depends(get_db_session),
 ) -> UserResponse:
     _configured_secret()
     email = payload.email.strip().casefold()
+    attempt_key = _login_attempt_key(email, request)
+    _check_login_attempt_limit(attempt_key)
     user = session.scalar(select(User).where(User.email == email))
     if user is None or not password_hash.verify(payload.password, user.password_hash):
+        _record_failed_login(attempt_key)
         raise HTTPException(status_code=401, detail="Adresse e-mail ou mot de passe incorrect")
     if not user.is_active:
+        _record_failed_login(attempt_key)
         raise HTTPException(status_code=403, detail="Ce compte est désactivé")
 
+    _clear_failed_logins(attempt_key)
     _set_session_cookie(response, user)
     return _user_response(user)
 

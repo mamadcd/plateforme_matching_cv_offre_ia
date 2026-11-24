@@ -1003,6 +1003,94 @@ select:focus-visible {
   line-height: 1.45;
 }
 
+.extraction-review {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.extracted-transcription {
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+.extracted-transcription summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  color: var(--green-deep);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.extracted-transcription summary small {
+  color: var(--muted-ink);
+  font-size: 0.72rem;
+  font-weight: 400;
+}
+
+.extracted-transcription pre {
+  max-height: 420px;
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.extraction-review label {
+  display: grid;
+  gap: 6px;
+  color: #44554b;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.extraction-review input,
+.extraction-review textarea {
+  width: 100%;
+  min-height: 39px;
+  padding: 8px 9px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid #cfd9d0;
+  border-radius: 2px;
+  font: inherit;
+  font-weight: 400;
+}
+
+.extraction-review textarea {
+  resize: vertical;
+}
+
+.extraction-review small {
+  color: var(--muted-ink);
+  font-size: 0.72rem;
+  font-weight: 400;
+}
+
+.extraction-quality {
+  display: grid;
+  gap: 4px;
+  color: var(--green-deep);
+  font-size: 0.8rem;
+}
+
+.extraction-quality span {
+  color: var(--muted-ink);
+  font-size: 0.72rem;
+}
+
 .match-list {
   margin-top: 20px;
   border-top: 1px solid var(--line);
@@ -1061,6 +1149,34 @@ select:focus-visible {
   font:
     400 0.7rem "DM Sans",
     sans-serif;
+}
+
+.match-signals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px 12px;
+  margin: 12px 0;
+}
+
+.match-signal {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px 8px;
+  color: var(--muted-ink);
+  font-size: 0.68rem;
+}
+
+.match-signal strong {
+  color: var(--green-deep);
+  font-size: 0.72rem;
+}
+
+.match-signal meter {
+  width: 100%;
+  height: 6px;
+  grid-column: 1 / -1;
+  accent-color: var(--green);
 }
 
 .text-button {
@@ -1271,7 +1387,9 @@ select:focus-visible {
 }
 
 .admin-overview,
-.user-management {
+.user-management,
+.prometheus-audit,
+.real-evaluation-section {
   grid-column: 1 / -1;
 }
 
@@ -1279,6 +1397,215 @@ select:focus-visible {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   border-top: 1px solid var(--line);
+}
+
+.evaluation-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.evaluation-report-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.evaluation-report-heading strong,
+.evaluation-report-heading h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.evaluation-report-heading > span {
+  color: var(--muted-ink);
+  font-size: 0.72rem;
+  text-align: right;
+}
+
+.evaluation-results {
+  display: grid;
+  gap: 12px;
+  margin-top: 22px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  background: #fcfcf8;
+}
+
+.evaluation-results .evaluation-report-heading {
+  margin-top: 0;
+}
+
+.evaluation-results .evaluation-report-heading h3 {
+  margin-top: 4px;
+}
+
+.evaluation-result-volume {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.evaluation-result-volume span {
+  padding: 5px 8px;
+  background: #edf2eb;
+  color: #44554b;
+  font-size: 0.7rem;
+}
+
+.evaluation-result-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 9px;
+}
+
+.evaluation-result-metric {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.evaluation-result-metric > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.evaluation-result-metric span {
+  color: var(--muted-ink);
+  font-size: 0.7rem;
+}
+
+.evaluation-result-metric strong {
+  color: var(--green-deep);
+  font: 600 1.15rem "Space Grotesk", sans-serif;
+}
+
+.evaluation-result-metric meter {
+  width: 100%;
+  height: 7px;
+  accent-color: var(--green-deep);
+}
+
+.evaluation-result-metrics.compact {
+  margin-top: 9px;
+}
+
+.evaluation-result-metrics.compact .evaluation-result-metric {
+  padding: 7px 9px;
+}
+
+.evaluation-result-metrics.compact .evaluation-result-metric strong {
+  font-size: 0.95rem;
+}
+
+.evaluation-candidate-picker {
+  display: grid;
+  gap: 7px;
+  max-width: 520px;
+  margin-top: 18px;
+  color: #44554b;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.evaluation-candidate-picker select,
+.evaluation-job-card select {
+  min-height: 39px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.evaluation-annotation-workspace {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.evaluation-profile-card,
+.evaluation-job-card {
+  padding: 14px;
+  border: 1px solid var(--line);
+  background: #fcfcf8;
+}
+
+.evaluation-profile-card > p,
+.evaluation-job-card p {
+  margin: 8px 0;
+  color: var(--muted-ink);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.evaluation-profile-card ul {
+  margin: 10px 0 0;
+  padding-left: 19px;
+  color: var(--muted-ink);
+  font-size: 0.78rem;
+}
+
+.evaluation-job-list {
+  display: grid;
+  gap: 9px;
+}
+
+.evaluation-job-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 0.3fr);
+  align-items: start;
+  gap: 14px;
+}
+
+.evaluation-job-card small,
+.evaluation-history-row small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted-ink);
+}
+
+.evaluation-job-card > label {
+  display: grid;
+  gap: 7px;
+  color: #44554b;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.evaluation-history {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.evaluation-history h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.evaluation-history-row {
+  padding: 13px 0;
+  border-top: 1px solid var(--line);
+}
+
+.evaluation-history-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 9px;
+  color: var(--green-deep);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.evaluation-consent-section .button {
+  margin-top: 14px;
 }
 
 .metric {
@@ -1379,6 +1706,13 @@ select:focus-visible {
   color: var(--muted-ink);
   font-size: 0.73rem;
   line-height: 1.4;
+}
+
+.prometheus-audit-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
 }
 
 .state-label {
@@ -1546,6 +1880,10 @@ select:focus-visible {
 
   .workspace-section {
     padding: 16px;
+  }
+
+  .evaluation-job-card {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .recruiter-jobs {

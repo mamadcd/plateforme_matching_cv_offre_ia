@@ -61,6 +61,8 @@ def get_llm():
             model=settings.OLLAMA_MODEL,
             temperature=0.1,
             format="json",
+            keep_alive=0,
+            num_thread=settings.OLLAMA_NUM_THREAD,
         )
 
     return LocalFallbackLLM()

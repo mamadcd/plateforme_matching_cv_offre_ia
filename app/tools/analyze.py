@@ -1,138 +1,140 @@
 from __future__ import annotations
 
 import json
-import logging
 
 from langchain_core.tools import tool
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.core.llm import get_llm
-from app.schemas.models import CandidateCV, JobPosting, MatchAnalysis
+from app.core.skills import canonicalize_skill, token_overlap
+from app.schemas.models import CandidateCV, JobPosting, MatchAnalysis, MatchSignals
 
 
-logger = logging.getLogger(__name__)
+SCORING_VERSION = "hybrid-v1"
+SCORING_WEIGHTS = {
+    "required_skills_coverage": 0.60,
+    "semantic_similarity": 0.25,
+    "profile_text_overlap": 0.15,
+}
 
 
-def analyze_cv_job_match(cv: CandidateCV, job: JobPosting) -> MatchAnalysis:
-    cv_skills = {skill.lower() for skill in cv.skills}
-    required_skills = {skill.lower() for skill in job.required_skills}
-    matched = sorted(cv_skills & required_skills)
-    missing = sorted(required_skills - cv_skills)
-
-    base_score = (len(matched) / max(1, len(required_skills))) * 70
-    bonus = 20 if any(skill in cv_skills for skill in ["python", "sql", "machine learning", "nlp"]) else 0
-    experience_bonus = 10 if cv.experience else 0
-    score = max(0, min(100, int(round(base_score + bonus + experience_bonus))))
-
-    summary = (
-        f"{cv.full_name} matches {job.title} at {job.company} with {len(matched)} overlapping skills "
-        f"out of {len(required_skills)} required skills."
+def analyze_cv_job_match(
+    cv: CandidateCV,
+    job: JobPosting,
+    semantic_similarity: float | None = None,
+) -> MatchAnalysis:
+    """Score explicit, inspectable signals; this score is not a hiring probability."""
+    cv_skills = {canonicalize_skill(skill).casefold() for skill in cv.skills}
+    required_names = {
+        canonicalize_skill(skill).casefold(): canonicalize_skill(skill)
+        for skill in job.required_skills
+    }
+    matched_keys = cv_skills & required_names.keys()
+    missing_keys = required_names.keys() - cv_skills
+    matched = sorted((required_names[key] for key in matched_keys), key=str.casefold)
+    missing = sorted((required_names[key] for key in missing_keys), key=str.casefold)
+    skill_coverage = len(matched_keys) / len(required_names) if required_names else None
+    experience_text = " ".join([cv.summary, *cv.experience])
+    job_text = " ".join([job.title, job.description, *job.required_skills])
+    profile_text_overlap = (
+        token_overlap(experience_text, job_text) if experience_text.strip() else None
     )
-
-    strengths = [
-        f"Strong overlap on: {', '.join(matched) if matched else 'no direct skill match'}",
+    semantic = (
+        max(0.0, min(1.0, semantic_similarity))
+        if semantic_similarity is not None
+        else None
+    )
+    signals = MatchSignals(
+        required_skills_coverage=skill_coverage,
+        semantic_similarity=semantic,
+        profile_text_overlap=profile_text_overlap,
+    )
+    components = [
+        (SCORING_WEIGHTS["required_skills_coverage"], skill_coverage),
+        (SCORING_WEIGHTS["semantic_similarity"], semantic),
+        (SCORING_WEIGHTS["profile_text_overlap"], profile_text_overlap),
     ]
-    if cv.experience:
-        strengths.append("Relevant work experience is present in the profile.")
+    active_components = [
+        (weight, value)
+        for weight, value in components
+        if value is not None
+    ]
+    denominator = sum(weight for weight, _ in active_components)
+    score = round(
+        100 * sum(weight * value for weight, value in active_components) / denominator
+    ) if denominator else 0
 
-    gaps = [] if not missing else [f"Missing or weakly covered: {', '.join(missing)}"]
+    strengths = []
+    if matched:
+        strengths.append(f"Compétences requises détectées : {', '.join(matched)}.")
+    if semantic is not None:
+        strengths.append(f"Similarité sémantique : {semantic:.0%}.")
+    if profile_text_overlap is not None and profile_text_overlap > 0:
+        strengths.append(
+            f"Recouvrement lexical du texte du profil avec l’offre : {profile_text_overlap:.0%}."
+        )
+    if not strengths:
+        strengths.append("Aucun signal de correspondance exploitable n’a été détecté.")
+
+    gaps = []
+    if missing:
+        gaps.append(
+            "Compétences requises non détectées dans le profil (à vérifier) : "
+            + ", ".join(missing)
+            + "."
+        )
+    if not job.required_skills:
+        gaps.append("L’offre ne définit pas de compétences requises explicites.")
+    if not cv.experience:
+        gaps.append("Aucune expérience structurée n’a été détectée dans le CV.")
 
     return MatchAnalysis(
         score=score,
-        summary=summary,
+        summary=(
+            f"Score indicatif fondé sur la couverture des critères pour {job.title}; "
+            "ce n’est pas une probabilité d’embauche."
+        ),
         strengths=strengths,
         gaps=gaps,
         matched_skills=matched,
+        signals=signals,
+        score_version=SCORING_VERSION,
+        score_weights=SCORING_WEIGHTS,
     )
 
 
-def analyze_jobs_for_cv(cv: CandidateCV, jobs: list[JobPosting]) -> list[MatchAnalysis]:
-    """Use the configured LLM to analyze retrieved jobs, with a local fallback."""
-    if not jobs:
-        return []
-
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", """Tu es un expert en recrutement. Analyse le CV par rapport aux offres.
-Réponds uniquement avec un JSON valide sous cette forme :
-{{"matches": [{{"job_id": "...", "score": 85, "explanation": "...",
-"strengths": ["..."], "gaps": ["..."], "matched_skills": ["..."]}}]}}
-Le score doit être entre 0 et 100. Base-toi sur les compétences explicites et implicites,
-l'expérience, la séniorité et la cohérence entre le parcours et l'offre."""),
-        ("human", "CV :\n{cv_text}\n\nOffres :\n{jobs_text}"),
-    ])
-    jobs_text = "\n\n".join(
-        json.dumps(job.model_dump(), ensure_ascii=False) for job in jobs
-    )
-
-    try:
-        response = (prompt | llm).invoke({"cv_text": cv.raw_text, "jobs_text": jobs_text})
-        content = response.content.strip()
-        if content.startswith("```"):
-            content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-        payload = json.loads(content)
-        analyses_by_id = {
-            item["job_id"]: MatchAnalysis(
-                score=max(0, min(100, int(item["score"]))),
-                summary=item["explanation"],
-                strengths=item.get("strengths", []),
-                gaps=item.get("gaps", []),
-                matched_skills=item.get("matched_skills", []),
-            )
-            for item in payload["matches"]
-        }
-        return [
-            analyses_by_id.get(job.id, analyze_cv_job_match(cv, job))
-            for job in jobs
-        ]
-    except Exception as error:
-        logger.warning("OpenAI match analysis failed; using local fallback: %s", error)
-        return [analyze_cv_job_match(cv, job) for job in jobs]
+def analyze_jobs_for_cv(
+    cv: CandidateCV,
+    jobs: list[JobPosting],
+    retrieval_signals: dict[str, dict[str, float]] | None = None,
+) -> list[MatchAnalysis]:
+    """Compute deterministic scores using the semantic retrieval signals when available."""
+    retrieval_signals = retrieval_signals or {}
+    return [
+        analyze_cv_job_match(
+            cv,
+            job,
+            semantic_similarity=retrieval_signals.get(job.id, {}).get("semantic_similarity"),
+        )
+        for job in jobs
+    ]
 
 
-def analyze_cvs_for_job(job: JobPosting, cvs: list[CandidateCV]) -> list[MatchAnalysis]:
-    """Analyze candidate CVs against a job posting."""
-    if not cvs:
-        return []
-
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", """Tu es un recruteur expert. Analyse plusieurs CV pour une offre d'emploi.
-Réponds uniquement avec un JSON valide sous cette forme :
-{{"matches": [{{"cv_id": "...", "score": 85, "explanation": "...",
-"strengths": ["..."], "gaps": ["..."], "matched_skills": ["..."]}}]}}
-Le score doit être entre 0 et 100. Évalue les compétences, l'expérience, la séniorité,
-la localisation et la mobilité par rapport aux contraintes de l'offre."""),
-        ("human", "Offre :\n{job_text}\n\nCV :\n{cvs_text}"),
-    ])
-    cvs_text = "\n\n".join(
-        json.dumps(cv.model_dump(), ensure_ascii=False) for cv in cvs
-    )
-
-    try:
-        response = (prompt | llm).invoke({
-            "job_text": json.dumps(job.model_dump(), ensure_ascii=False),
-            "cvs_text": cvs_text,
-        })
-        content = response.content.strip()
-        if content.startswith("```"):
-            content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-        payload = json.loads(content)
-        analyses_by_id = {
-            item["cv_id"]: MatchAnalysis(
-                score=max(0, min(100, int(item["score"]))),
-                summary=item["explanation"],
-                strengths=item.get("strengths", []),
-                gaps=item.get("gaps", []),
-                matched_skills=item.get("matched_skills", []),
-            )
-            for item in payload["matches"]
-        }
-        return [
-            analyses_by_id.get(cv.id, analyze_cv_job_match(cv, job))
-            for cv in cvs
-        ]
-    except Exception as error:
-        logger.warning("Reverse match analysis failed; using local analysis: %s", error)
-        return [analyze_cv_job_match(cv, job) for cv in cvs]
+def analyze_cvs_for_job(
+    job: JobPosting,
+    cvs: list[CandidateCV],
+    retrieval_signals: dict[str, dict[str, float]] | None = None,
+) -> list[MatchAnalysis]:
+    """Compute the same deterministic score in the recruiter-to-candidate direction."""
+    retrieval_signals = retrieval_signals or {}
+    return [
+        analyze_cv_job_match(
+            cv,
+            job,
+            semantic_similarity=retrieval_signals.get(cv.id, {}).get("semantic_similarity"),
+        )
+        for cv in cvs
+    ]
 
 
 llm = get_llm()

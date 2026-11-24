@@ -2,56 +2,88 @@
 
 ```mermaid
 flowchart TD
-	A[CV texte reçu par POST /match] --> B[Création du CandidateCV]
-	B --> B1[Extraction rudimentaire des compétences<br/>tokens de plus de 3 caractères]
-	B1 --> C[Chargement des offres JSON]
+    UI[Frontend React / Nginx] --> AUTH[Authentification JWT<br/>candidat, recruteur, administrateur]
+    AUTH --> DB[(SQLite)]
 
-	C --> D[Construction du texte des offres]
-	D --> E[Embedding des offres avec BAAI/bge-m3]
-	E --> F[Indexation persistante dans Chroma]
+    subgraph INGESTION[Ingestion des documents]
+        DOC[CV ou offre PDF, image, DOCX, texte] --> EXTRACT[Extraction du texte<br/>pypdf, OCR, DOCX]
+        EXTRACT --> STRUCT[Structuration Pydantic<br/>CandidateCV ou JobPosting]
+        STRUCT --> SKILLS[Référentiel des compétences<br/>normalisation et extraction]
+    end
 
-	B1 --> G[Construction du texte du CV]
-	G --> H[Embedding du CV avec BAAI/bge-m3]
-	H --> I[Recherche vectorielle dans Chroma]
-	I --> J[Classement par proximité sémantique]
-	J --> K[Offres les plus proches]
+    UI --> INGESTION
 
-	K --> L[Offres récupérées]
-	L --> M{LLM disponible}
+    subgraph CANDIDAT[Flux candidat]
+        PROFILE[Profil candidat] --> CV[CandidateCV]
+        CONSENT{Recherche activée ?}
+        PROFILE --> CONSENT
+        CONSENT -->|Oui| CV_INDEX[(Chroma collection cvs)]
+        CONSENT -->|Non| REMOVE[Retrait de l'index Chroma]
+        CV --> HYBRID_CV
+    end
 
-	M -->|Oui| N[Prompt CV + offres vers le LLM<br/>Gemma/Ollama ou OpenAI selon configuration]
-	N --> O[Parsing du JSON d'analyse]
-	M -->|Non ou erreur| P[Fallback local]
-	P --> P1[Intersection compétences<br/>score, forces et lacunes]
+    subgraph RECRUTEUR[Flux recruteur]
+        JOB_CREATE[Création ou publication d'une offre] --> JOB[JobPosting]
+        JOB --> HYBRID_JOB
+    end
 
-	O --> Q[MatchAnalysis par offre]
-	P1 --> Q
-	Q --> R[Assemblage des résultats]
-	R --> S[Réponse JSON /match<br/>score, explication, strengths, gaps]
+    subgraph RETRIEVAL[Recherche hybride]
+        JOBS[Offres exemples + offres publiées] --> JOB_INDEX[(Chroma collection jobs)]
+        CV --> HYBRID_CV[Construction des textes CV / offres]
+        JOB_INDEX --> SEM_J[Similarité sémantique<br/>BAAI/bge-m3]
+        HYBRID_CV --> SEM_J
+        HYBRID_CV --> LEX_J[Similarité lexicale]
+        HYBRID_CV --> SKILL_J[Recouvrement des compétences]
+        SEM_J --> RRF_J[Fusion hybride par rangs]
+        LEX_J --> RRF_J
+        SKILL_J --> RRF_J
+        RRF_J --> TOP_J[Top offres pour le candidat]
 
-	V[Offre reçue par POST /match/job] --> W[Chargement ou construction du JobPosting]
-	W --> X[Embedding de l'offre avec BAAI/bge-m3]
-	Y[CV disponibles] --> Z[Embedding des CV avec BAAI/bge-m3]
-	Z --> AA[Indexation dans la collection Chroma cvs]
-	X --> AB[Recherche vectorielle des CV similaires]
-	AA --> AB
-	AB --> AC[Top CV candidats]
-	AC --> AD[Analyse Offre vers CV<br/>compétences, expérience, mobilité]
-	AD --> AE[Réponse JSON /match/job<br/>score, explication, strengths, gaps]
+        JOB --> HYBRID_JOB[Construction des textes offre / CV]
+        CV_INDEX --> SEM_C[Similarité sémantique<br/>BAAI/bge-m3]
+        HYBRID_JOB --> SEM_C
+        HYBRID_JOB --> LEX_C[Similarité lexicale]
+        HYBRID_JOB --> SKILL_C[Recouvrement des compétences]
+        SEM_C --> RRF_C[Fusion hybride par rangs]
+        LEX_C --> RRF_C
+        SKILL_C --> RRF_C
+        RRF_C --> TOP_C[Top CV visibles pour le recruteur]
+    end
 
-	S -. peut être comparé à .-> AE
+    subgraph ANALYSE[Analyse explicable]
+        TOP_J --> SCORE_J[Calcul hybride-v1]
+        TOP_C --> SCORE_C[Calcul hybride-v1]
+        SCORE_J --> WEIGHTS_J[60 % compétences + 25 % sémantique + 15 % texte]
+        SCORE_C --> WEIGHTS_C[60 % compétences + 25 % sémantique + 15 % texte]
+        WEIGHTS_J --> RESULT_J[Score, forces, lacunes, compétences]
+        WEIGHTS_C --> RESULT_C[Score, forces, lacunes, compétences]
+    end
 
-	T[LangGraph agent] -. orchestre .-> U[AgentState messages]
-	U -. appels d'outils .-> D
-	U -. appelle éventuellement .-> N
+    CV --> TOP_J
+    JOB --> TOP_C
+    RESULT_J --> API_J[API candidat / recommandations]
+    RESULT_C --> API_C[API recruteur / candidats]
+
+    API_J --> POSTULE[Postuler à une offre]
+    POSTULE --> DB
+    API_C --> SHORTLIST[Shortlist]
+    SHORTLIST --> DB
+
+    LEGACY_ACTIVE[/match /match/parsed-cv /match/anonymous] -. compatibilité active .-> RETRIEVAL
+    LEGACY_OFF[/match/job /match/parsed-job] -. réponses HTTP 410 .-> LEGACY404[Utilisez une offre publiée<br/>dont vous êtes propriétaire]
+
+    AGENT[LangGraph optionnel] -. orchestre les outils .-> RETRIEVAL
+    AGENT -. peut appeler l'analyse LLM .-> RESULT_J
+
+    OBS[Prometheus /metrics] -. métriques HTTP .-> UI
+    OBS -. collecte .-> AUTH
 ```
 
 ## Légende
 
-    - Le chemin principal de `/match` utilise BAAI/bge-m3 pour encoder le CV et les offres.
-    - Les offres sont indexées dans Chroma avant chaque recherche et persistées dans `chroma_db`.
-    - La récupération ne possède plus de fallback lexical : elle dépend de la recherche vectorielle Chroma.
-    - Le chemin inverse `/match/job` indexe les CV dans une collection Chroma distincte et récupère les profils les plus proches.
-    - Les deux directions utilisent le même modèle BAAI/bge-m3, puis une analyse explique les forces et les écarts.
-
-- L'analyse finale utilise le LLM configuré, avec un fallback local basé sur les compétences explicites.
+- `BAAI/bge-m3` produit les embeddings utilisés par les collections Chroma `jobs` et `cvs`.
+- La récupération combine trois signaux : similarité sémantique, similarité lexicale et recouvrement des compétences.
+- Le score exposé est déterministe (`hybrid-v1`) : 60 % couverture des compétences, 25 % similarité sémantique et 15 % recouvrement textuel.
+- Les outils LLM restent disponibles pour des analyses de texte, mais le score principal n'est pas une prédiction générée par le LLM.
+- Les profils recruteurs peuvent seulement être visibles si le candidat active explicitement `searchable`.
+- Les routes `/match/job` et `/match/parsed-job` sont désactivées : le recruteur utilise une offre publiée détenue par son compte.

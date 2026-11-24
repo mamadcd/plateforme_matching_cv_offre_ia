@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -19,11 +19,14 @@ from app.schemas.models import (
     JobPosting,
     JobToCVsMatchResponse,
 )
-from app.tools.analyze import analyze_cvs_for_job, analyze_jobs_for_cv
-from app.tools.retrieve import retrieve_cvs_for_job, retrieve_jobs_for_cv
+from app.tools.analyze import SCORING_WEIGHTS, analyze_cvs_for_job, analyze_jobs_for_cv
+from app.tools.retrieve import remove_cv_from_index, retrieve_cvs_for_job, retrieve_jobs_for_cv
 from app.workflows.models import (
     Application,
+    CandidateEvaluationConsent,
     CandidateProfile,
+    MatchEvaluationAnnotation,
+    MatchingEvaluationRun,
     Notification,
     RecruiterJob,
     ShortlistEntry,
@@ -35,6 +38,10 @@ router = APIRouter(tags=["workflows"])
 
 class CandidateProfileInput(CandidateCV):
     searchable: bool = False
+
+
+class CandidateEvaluationConsentInput(BaseModel):
+    enabled: bool
 
 
 class RecruiterJobInput(BaseModel):
@@ -111,6 +118,50 @@ def get_candidate_profile(
     return {**_profile_as_cv(profile).model_dump(), "searchable": profile.searchable}
 
 
+@router.get("/candidate/evaluation-consent")
+def get_candidate_evaluation_consent(
+    session: Session = Depends(get_db_session),
+    user: User = Depends(require_roles("candidate")),
+):
+    consent = session.get(CandidateEvaluationConsent, user.id)
+    return {
+        "enabled": consent is not None,
+        "policy_version": consent.policy_version if consent else None,
+    }
+
+
+@router.put("/candidate/evaluation-consent")
+def update_candidate_evaluation_consent(
+    payload: CandidateEvaluationConsentInput,
+    session: Session = Depends(get_db_session),
+    user: User = Depends(require_roles("candidate")),
+):
+    consent = session.get(CandidateEvaluationConsent, user.id)
+    if payload.enabled:
+        if session.get(CandidateProfile, user.id) is None:
+            raise HTTPException(status_code=409, detail="Enregistrez d'abord votre CV")
+        if consent is None:
+            consent = CandidateEvaluationConsent(
+                candidate_id=user.id,
+                policy_version="evaluation-v1",
+            )
+            session.add(consent)
+    elif consent is not None:
+        session.delete(consent)
+        session.execute(
+            delete(MatchEvaluationAnnotation).where(
+                MatchEvaluationAnnotation.candidate_id == user.id
+            )
+        )
+        session.execute(delete(MatchingEvaluationRun))
+
+    session.commit()
+    return {
+        "enabled": payload.enabled,
+        "policy_version": consent.policy_version if payload.enabled and consent else None,
+    }
+
+
 @router.put("/candidate/profile")
 def save_candidate_profile(
     payload: CandidateProfileInput,
@@ -129,6 +180,8 @@ def save_candidate_profile(
     profile.searchable = payload.searchable
     profile.updated_at = datetime.now(timezone.utc)
     session.commit()
+    if not profile.searchable:
+        remove_cv_from_index(user.id)
     return {**payload.model_dump(), "id": user.id}
 
 
@@ -147,7 +200,14 @@ def candidate_recommendations(
     jobs.extend(_job_from_row(job) for job in recruiter_jobs)
     cv = _profile_as_cv(profile)
     matches = retrieve_jobs_for_cv(cv, jobs, k=min(10, len(jobs)))
-    analyses = analyze_jobs_for_cv(cv, [match["job"] for match in matches])
+    analyses = analyze_jobs_for_cv(
+        cv,
+        [match["job"] for match in matches],
+        {
+            match["job"].id: {"semantic_similarity": match["semantic_similarity"]}
+            for match in matches
+        },
+    )
     return CVToJobsMatchResponse(
         cv_summary=cv.summary,
         matches=[
@@ -158,9 +218,17 @@ def candidate_recommendations(
                 "explanation": analysis.summary,
                 "strengths": analysis.strengths,
                 "gaps": analysis.gaps,
+                "matched_skills": analysis.matched_skills,
+                "signals": analysis.signals,
+                "score_version": analysis.score_version,
             }
-            for match, analysis in zip(matches, analyses)
+            for match, analysis in sorted(
+                zip(matches, analyses),
+                key=lambda item: (-item[1].score, item[0]["job"].id),
+            )
         ],
+        score_version=analyses[0].score_version if analyses else "hybrid-v1",
+        score_weights=SCORING_WEIGHTS,
     )
 
 
@@ -295,7 +363,14 @@ def recommended_candidates(
     if not cvs:
         return []
     matches = retrieve_cvs_for_job(_job_from_row(job), cvs, k=min(20, len(cvs)))
-    analyses = analyze_cvs_for_job(_job_from_row(job), [match["cv"] for match in matches])
+    analyses = analyze_cvs_for_job(
+        _job_from_row(job),
+        [match["cv"] for match in matches],
+        {
+            match["cv"].id: {"semantic_similarity": match["semantic_similarity"]}
+            for match in matches
+        },
+    )
     return [
         CVForJobMatchResult(
             cv_id=match["cv"].id,
@@ -305,8 +380,14 @@ def recommended_candidates(
             strengths=analysis.strengths,
             gaps=analysis.gaps,
             matched_skills=analysis.matched_skills or match["matched_skills"],
+            signals=analysis.signals,
+            score_version=analysis.score_version,
+            score_weights=SCORING_WEIGHTS,
         ).model_dump()
-        for match, analysis in zip(matches, analyses)
+        for match, analysis in sorted(
+            zip(matches, analyses),
+            key=lambda item: (-item[1].score, item[0]["cv"].id),
+        )
     ]
 
 

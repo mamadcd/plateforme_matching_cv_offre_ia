@@ -1,0 +1,11 @@
+{
+  "python.terminal.useEnvFile": true,
+  "python.testing.pytestArgs": ["tests"],
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestEnabled": true,
+  "sonarlint.connectedMode.project": {
+    "connectionId": "SonarConnect",
+    "projectKey": "mamadcd_plateforme_matching_cv_offre_ia"
+  },
+  "python.testing.unittestArgs": ["-v", "-s", "./tests", "-p", "test_*.py"]
+}

@@ -1,0 +1,12 @@
+{
+  "name": "Exemples synthétiques du dépôt",
+  "type": "synthetic_demo",
+  "label_source": "Paires de démonstration vérifiées manuellement à partir des profils et compétences explicites.",
+  "cases": [
+    {"cv_id": "cv-001", "relevant_job_ids": ["job-001"]},
+    {"cv_id": "cv-002", "relevant_job_ids": ["job-003"]},
+    {"cv_id": "cv-003", "relevant_job_ids": ["job-001"]},
+    {"cv_id": "cv-004", "relevant_job_ids": ["job-004"]},
+    {"cv_id": "cv-005", "relevant_job_ids": ["job-005"]}
+  ]
+}

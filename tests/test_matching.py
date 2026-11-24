@@ -37,9 +37,33 @@ def build_jobs():
     ]
 
 
-def test_retrieve_jobs_for_cv_returns_best_match():
+def test_retrieve_jobs_for_cv_returns_best_match(monkeypatch):
     cv = build_cv()
     jobs = build_jobs()
+    from app.tools import retrieve
+
+    class FakeCollection:
+        def count(self):
+            return len(jobs)
+
+    class FakeVectorStore:
+        _collection = FakeCollection()
+
+        def delete(self, ids):
+            pass
+
+        def add_texts(self, texts, metadatas, ids):
+            pass
+
+        def similarity_search_with_score(self, text, k):
+            job_a = jobs[0]
+            job_b = jobs[1]
+            class Document:
+                def __init__(self, job):
+                    self.metadata = {"id": job.id}
+            return [(Document(job_a), 0.1), (Document(job_b), 1.5)]
+
+    monkeypatch.setattr(retrieve, "_get_vectorstore", lambda collection_name: FakeVectorStore())
 
     results = retrieve_jobs_for_cv(cv, jobs, k=1)
 

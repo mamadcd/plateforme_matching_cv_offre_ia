@@ -3,6 +3,17 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
+class ExtractionQuality(BaseModel):
+    completeness: int = Field(ge=0, le=100)
+    warnings: List[str] = Field(default_factory=list)
+
+
+class MatchSignals(BaseModel):
+    required_skills_coverage: float | None = Field(default=None, ge=0, le=1)
+    semantic_similarity: float | None = Field(default=None, ge=0, le=1)
+    profile_text_overlap: float | None = Field(default=None, ge=0, le=1)
+
+
 class CandidateCV(BaseModel):
     id: str
     full_name: str
@@ -10,6 +21,8 @@ class CandidateCV(BaseModel):
     skills: List[str] = Field(default_factory=list)
     experience: List[str] = Field(default_factory=list)
     raw_text: str = ""
+    extracted_text: str = ""
+    extraction_quality: ExtractionQuality | None = None
 
 
 class JobPosting(BaseModel):
@@ -20,6 +33,7 @@ class JobPosting(BaseModel):
     description: str = ""
     required_skills: List[str] = Field(default_factory=list)
     keywords: List[str] = Field(default_factory=list)
+    extraction_quality: ExtractionQuality | None = None
 
 
 class MatchAnalysis(BaseModel):
@@ -28,6 +42,9 @@ class MatchAnalysis(BaseModel):
     strengths: List[str]
     gaps: List[str]
     matched_skills: List[str] = Field(default_factory=list)
+    signals: MatchSignals = Field(default_factory=MatchSignals)
+    score_version: str = "hybrid-v1"
+    score_weights: dict[str, float] = Field(default_factory=dict)
 
 
 class RetrievedJobMatch(BaseModel):
@@ -51,12 +68,18 @@ class JobForCVMatchResult(BaseModel):
     explanation: str
     strengths: List[str] = Field(default_factory=list)
     gaps: List[str] = Field(default_factory=list)
+    matched_skills: List[str] = Field(default_factory=list)
+    signals: MatchSignals = Field(default_factory=MatchSignals)
+    score_version: str = "hybrid-v1"
+    score_weights: dict[str, float] = Field(default_factory=dict)
 
 
 class CVToJobsMatchResponse(BaseModel):
     cv_summary: str
     matches: List[JobForCVMatchResult]
     message: str = "Matching terminé"
+    score_version: str = "hybrid-v1"
+    score_weights: dict[str, float] = Field(default_factory=dict)
 
 
 class CVForJobMatchResult(BaseModel):
@@ -67,9 +90,14 @@ class CVForJobMatchResult(BaseModel):
     strengths: List[str] = Field(default_factory=list)
     gaps: List[str] = Field(default_factory=list)
     matched_skills: List[str] = Field(default_factory=list)
+    signals: MatchSignals = Field(default_factory=MatchSignals)
+    score_version: str = "hybrid-v1"
+    score_weights: dict[str, float] = Field(default_factory=dict)
 
 
 class JobToCVsMatchResponse(BaseModel):
     job_summary: str
     matches: List[CVForJobMatchResult]
     message: str = "Matching inverse terminé"
+    score_version: str = "hybrid-v1"
+    score_weights: dict[str, float] = Field(default_factory=dict)
